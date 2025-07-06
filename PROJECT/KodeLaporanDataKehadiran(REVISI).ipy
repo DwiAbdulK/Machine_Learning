@@ -1,0 +1,168 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import tkinter as tk
+from tkinter import messagebox
+from tkinter import ttk
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+# Baca file CSV yang hanya berisi NIM, Nama, M1-M14 (belum ada status)
+df = pd.read_csv('data_kehadiran.csv', sep=';')
+
+# Antisipasi jika kolom 'No' sudah ada dari hasil running sebelumnya
+if 'No' in df.columns:
+    df = df.drop('No', axis=1)
+
+# List otomatis nama kolom kehadiran (M1 sampai M14)
+kolom_kehadiran = [f"M{i}" for i in range(1, 15)]
+
+# Hitung jumlah kehadiran (jumlah 1 di M1-M14) untuk tiap mahasiswa
+df['Total_Hadir'] = df[kolom_kehadiran].sum(axis=1)
+
+# Hitung persentase kehadiran
+df['Persentase_Kehadiran'] = (df['Total_Hadir'] / 14) * 100
+
+# Tentukan status otomatis:
+# - Aktif jika hadir minimal 11x
+# - Pasif jika hadir kurang dari 11x
+df['Status'] = df['Total_Hadir'].apply(lambda x: 'Aktif' if x >= 11 else 'Pasif')
+
+# Tambahkan kolom "No" agar nomor urut data sama seperti di Excel (baris 2 dst, karena baris 1 header)
+df.insert(0, 'No', range(2, 2 + len(df)))
+
+# Fungsi untuk menampilkan data kehadiran mahasiswa di tabel GUI
+def tampilkan_tabel():
+    for row in tree.get_children():
+        tree.delete(row)
+
+    for index, row in df.iterrows():
+        tree.insert("", "end", values=(row['No'], row['NIM'], row['Nama'], row['Total_Hadir'], row['Persentase_Kehadiran'], row['Status']))
+
+# Fungsi untuk mencari mahasiswa berdasarkan NIM dan menampilkan hasil
+def cari_mahasiswa():
+    nim_input = nim_entry.get().strip()
+    
+    if not nim_input:
+        messagebox.showerror("Input Kosong", "Silakan masukkan NIM terlebih dahulu.")
+        return
+
+    try:
+        nim_int = int(nim_input)
+        hasil = df[df['NIM'] == nim_int]
+
+        if not hasil.empty:
+            data = hasil.iloc[0]
+            
+            # Ambil kehadiran M1 sampai M14
+            kehadiran_mingguan = '\n'.join([f"M{i}: {int(data[f'M{i}'])}" for i in range(1, 15)])
+            
+            # Format pesan
+            pesan = (
+                f"Nomor urut di file Excel: {data['No']}\n\n"
+                f"NIM      : {data['NIM']}\n"
+                f"Nama     : {data['Nama']}\n"
+                f"Total Hadir            : {data['Total_Hadir']}\n"
+                f"Persentase Kehadiran   : {data['Persentase_Kehadiran']:.2f}%\n"
+                f"Status                 : {data['Status']}\n\n"
+                f"Kehadiran Mingguan:\n{kehadiran_mingguan}"
+            )
+            messagebox.showinfo("Data Mahasiswa Ditemukan", pesan)
+        else:
+            messagebox.showerror("Error Not Found", f"NIM {nim_int} tidak ditemukan dalam data.")
+    except ValueError:
+        messagebox.showerror("Format Tidak Valid", "Tolong masukkan NIM dengan hanya dengan format angka (tanpa huruf atau simbol).")
+
+
+# Fungsi untuk mencari mahasiswa berdasarkan Nama
+def cari_berdasarkan_nama():
+    nama_input = nama_entry.get().lower().strip()
+    if not nama_input:
+        messagebox.showerror("Error", "Masukkan nama terlebih dahulu.")
+        return
+
+    hasil = df[df['Nama'].str.lower().str.contains(nama_input)]
+
+    if not hasil.empty:
+        for row in tree.get_children():
+            tree.delete(row)
+
+        for index, row in hasil.iterrows():
+            tree.insert("", "end", values=(row['No'], row['NIM'], row['Nama'], row['Total_Hadir'], row['Persentase_Kehadiran'], row['Status']))
+    else:
+        messagebox.showerror("Tidak Ditemukan", f"Tidak ada mahasiswa dengan nama mengandung '{nama_input}'.")
+
+# Fungsi untuk menampilkan grafik persentase kehadiran
+def tampilkan_grafik():
+    top_50 = df.head(51)
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.bar(top_50['No'], top_50['Persentase_Kehadiran'], color='black')
+    ax.set_xlabel('Nomor Urut Mahasiswa')
+    ax.set_ylabel('Persentase Kehadiran (%)')
+    ax.set_title('Persentase Kehadiran Mahasiswa Urutan 1-50')
+
+    # Konversi figure menjadi canvas dan tampilkan di Tkinter
+    canvas = FigureCanvasTkAgg(fig, master=window)
+    canvas.draw()
+    canvas.get_tk_widget().pack()
+
+# Membuat jendela utama
+window = tk.Tk()
+window.title("GUI Kehadiran Mahasiswa")
+window.geometry("1920x800")
+
+# Frame untuk input dan tombol
+frame_input = tk.Frame(window)
+frame_input.pack(pady=20)
+
+# Input dan tombol cari NIM
+nim_label = tk.Label(frame_input, text="Masukkan NIM:")
+nim_label.pack(side=tk.LEFT, padx=10)
+
+nim_entry = tk.Entry(frame_input)
+nim_entry.pack(side=tk.LEFT, padx=5)
+
+cari_button = tk.Button(frame_input, text="Cari NIM", command=cari_mahasiswa)
+cari_button.pack(side=tk.LEFT, padx=10)
+
+# Input dan tombol cari Nama
+nama_label = tk.Label(frame_input, text="Masukkan Nama:")
+nama_label.pack(side=tk.LEFT, padx=10)
+
+nama_entry = tk.Entry(frame_input)
+nama_entry.pack(side=tk.LEFT, padx=5)
+
+nama_button = tk.Button(frame_input, text="Cari Nama", command=cari_berdasarkan_nama)
+nama_button.pack(side=tk.LEFT, padx=10)
+
+# Tombol untuk menampilkan tabel
+tabel_button = tk.Button(window, text="Tampilkan Tabel Data Kehadiran", command=tampilkan_tabel)
+tabel_button.pack(pady=10)
+
+# Tombol untuk menampilkan grafik
+grafik_button = tk.Button(window, text="Tampilkan Grafik", command=tampilkan_grafik)
+grafik_button.pack(pady=10)
+
+# Frame untuk tabel
+frame_tabel = tk.Frame(window)
+frame_tabel.pack(pady=10)
+
+# Tabel menggunakan Treeview untuk menampilkan data
+tree = ttk.Treeview(frame_tabel, columns=("No", "NIM", "Nama", "Total_Hadir", "Persentase_Kehadiran", "Status"), show="headings")
+tree.pack(fill=tk.BOTH, expand=True)
+
+tree.heading("No", text="No")
+tree.heading("NIM", text="NIM")
+tree.heading("Nama", text="Nama")
+tree.heading("Total_Hadir", text="Total Hadir")
+tree.heading("Persentase_Kehadiran", text="Persentase Kehadiran (%)")
+tree.heading("Status", text="Status")
+
+tree.column("No", width=60)
+tree.column("NIM", width=100)
+tree.column("Nama", width=200)
+tree.column("Total_Hadir", width=100)
+tree.column("Persentase_Kehadiran", width=180)
+tree.column("Status", width=100)
+
+# Jalankan aplikasi Tkinter
+window.mainloop()
